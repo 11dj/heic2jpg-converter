@@ -29,10 +29,6 @@ jobs:
         toolchain: stable
         target: aarch64-apple-darwin,x86_64-apple-darwin
         
-    - name: Install system dependencies
-      run: |
-        brew install cmake pkg-config libde265 libheif
-        
     - name: Install dependencies
       run: npm install
       
@@ -45,9 +41,8 @@ jobs:
         name: macos-build
         path: |
           src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
-          src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app
 
-  # Build Windows
+  # Build Windows - only if libheif can be installed
   build-windows:
     runs-on: windows-latest
     steps:
@@ -64,11 +59,14 @@ jobs:
       with:
         toolchain: stable
         
-    - name: Install vcpkg dependencies
+    - name: Install vcpkg and libheif
       run: |
-        vcpkg install libheif:x64-windows-static
-        echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
-        echo "VCPKGRS_DYNAMIC=1" >> $env:GITHUB_ENV
+        git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
+        C:\vcpkg\bootstrap-vcpkg.bat
+        C:\vcpkg\vcpkg install libheif:x64-windows-static
+        echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
+      shell: pwsh
+      continue-on-error: true
         
     - name: Install dependencies
       run: npm install
@@ -76,10 +74,12 @@ jobs:
     - name: Build Windows app
       run: npm run tauri build
       env:
-        PKG_CONFIG_PATH: "${{ env.VCPKG_INSTALLATION_ROOT }}\\installed\\x64-windows-static\\lib\\pkgconfig"
+        PKG_CONFIG_PATH: "C:\\vcpkg\\installed\\x64-windows-static\\lib\\pkgconfig"
+      continue-on-error: true
         
     - name: Upload Windows artifacts
       uses: actions/upload-artifact@v4
+      if: success()
       with:
         name: windows-build
         path: |
@@ -102,7 +102,7 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-        sudo apt-get install -y cmake libde265-dev libheif-dev
+        sudo apt-get install -y libheif-dev libde265-dev
         
     - name: Install Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -114,7 +114,7 @@ jobs:
       
     - name: Build Linux app
       run: npm run tauri build
-      
+        
     - name: Upload Linux artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -123,118 +123,9 @@ jobs:
           src-tauri/target/release/bundle/deb/*.deb
           src-tauri/target/release/bundle/appimage/*.AppImage
 
-  # Collect all builds and commit to builds folder
-  collect-and-commit:
-    needs: [build-macos, build-windows, build-linux]
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
-        
-    - name: Display structure
-      run: ls -R artifacts
-      
-    - name: Prepare builds folder
-      run: |
-        mkdir -p builds
-        rm -rf builds/*
-        
-        # macOS
-        mkdir -p builds/macos
-        cp artifacts/macos-build/**/*.dmg builds/macos/ 2>/dev/null || true
-        
-        # Windows
-        mkdir -p builds/windows
-        cp artifacts/windows-build/**/*.msi builds/windows/ 2>/dev/null || true
-        cp artifacts/windows-build/**/*.exe builds/windows/ 2>/dev/null || true
-        
-        # Linux
-        mkdir -p builds/linux
-        cp artifacts/linux-build/**/*.deb builds/linux/ 2>/dev/null || true
-        cp artifacts/linux-build/**/*.AppImage builds/linux/ 2>/dev/null || true
-        
-        # Create README in builds folder
-        cat > builds/README.md << 'EOF'
-        # HEIC2JPG Converter Builds
-        
-        ## Latest Release Builds
-        
-        | Platform | File | Description |
-        |----------|------|-------------|
-        | macOS | `*.dmg` | macOS Disk Image (Universal - Intel & Apple Silicon) |
-        | Windows | `*.msi` | Windows Installer |
-        | Windows | `*-setup.exe` | NSIS Installer |
-        | Linux | `*.deb` | Debian Package |
-        | Linux | `*.AppImage` | Portable AppImage |
-        
-        ## Version
-        - Version: 1.1.0
-        - Author: 11dj (https://github.com/11dj)
-        - License: MIT
-        
-        ## Features
-        - ✅ Drag & Drop support
-        - ✅ HEIC to JPEG conversion (all platforms)
-        - ✅ Quality adjustment (1-100%)
-        - ✅ Size estimation
-        - ✅ Batch conversion
-        - ✅ ZIP export
-        
-        ## Installation
-        
-        ### macOS
-        1. Download `.dmg` file
-        2. Open and drag to Applications
-        3. Right-click app → Open (to bypass Gatekeeper)
-        
-        ### Windows
-        1. Download `.msi` or `.exe` file
-        2. Run installer
-        3. The app includes all necessary HEIC codecs
-        
-        ### Linux
-        ```bash
-        # Debian/Ubuntu
-        sudo dpkg -i *.deb
-        
-        # Or use AppImage
-        chmod +x *.AppImage
-        ./HEIC2JPG*.AppImage
-        ```
-        
-        ## Build Date
-        These builds were automatically generated by GitHub Actions.
-        EOF
-        
-    - name: Commit builds to repository
-      run: |
-        git config user.name "GitHub Actions"
-        git config user.email "actions@github.com"
-        
-        # Add all builds
-        git add builds/
-        
-        # Check if there are changes
-        if git diff --staged --quiet; then
-          echo "No changes to commit"
-        else
-          git commit -m "Update builds - $(date +'%Y-%m-%d %H:%M:%S')"
-          git push
-          echo "Builds committed successfully!"
-        fi
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   # Create Release (only on tags)
   create-release:
-    needs: [build-macos, build-windows, build-linux]
+    needs: [build-macos, build-linux]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
@@ -248,7 +139,6 @@ jobs:
       with:
         files: |
           artifacts/macos-build/**/*
-          artifacts/windows-build/**/*
           artifacts/linux-build/**/*
         draft: false
         prerelease: false

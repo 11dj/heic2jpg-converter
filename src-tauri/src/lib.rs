@@ -2,12 +2,21 @@ mod commands {
     use serde::{Deserialize, Serialize};
     use std::collections::HashSet;
     use std::fs::File;
-    use std::io::{BufReader, BufWriter, Cursor, Read, Write};
+    use std::io::{BufReader, BufWriter, Read, Write};
     use std::path::{Path, PathBuf};
     use tempfile::TempDir;
     use zip::write::FileOptions;
     use chrono::Local;
+    
+    // Only use libheif on non-macOS platforms
+    #[cfg(not(target_os = "macos"))]
     use libheif_rs::{ColorSpace, HeifContext, RgbChroma};
+    #[cfg(not(target_os = "macos"))]
+    use std::io::Cursor;
+    
+    // Only use Command on macOS
+    #[cfg(target_os = "macos")]
+    use std::process::Command;
 
     #[derive(Debug, Serialize, Deserialize, Clone)]
     pub struct HeicFileInfo {
@@ -65,7 +74,33 @@ mod commands {
         Ok(extracted)
     }
 
-    fn get_image_dimensions_libheif(path: &Path) -> anyhow::Result<(u32, u32)> {
+    // macOS: Use sips
+    #[cfg(target_os = "macos")]
+    fn get_image_dimensions(path: &Path) -> anyhow::Result<(u32, u32)> {
+        let output = Command::new("sips")
+            .args(["-g", "pixelWidth", "-g", "pixelHeight", &path.to_string_lossy()])
+            .output()?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut width = 0u32;
+        let mut height = 0u32;
+        for line in stdout.lines() {
+            if line.contains("pixelWidth:") {
+                if let Some(val) = line.split(':').nth(1) {
+                    width = val.trim().parse().unwrap_or(0);
+                }
+            }
+            if line.contains("pixelHeight:") {
+                if let Some(val) = line.split(':').nth(1) {
+                    height = val.trim().parse().unwrap_or(0);
+                }
+            }
+        }
+        Ok((width, height))
+    }
+
+    // Windows/Linux: Use libheif
+    #[cfg(not(target_os = "macos"))]
+    fn get_image_dimensions(path: &Path) -> anyhow::Result<(u32, u32)> {
         let ctx = HeifContext::read_from_file(path.to_string_lossy().as_ref())?;
         let handle = ctx.primary_image_handle()?;
         Ok((handle.width(), handle.height()))
@@ -75,78 +110,93 @@ mod commands {
         let metadata = std::fs::metadata(path).map_err(|e| e.to_string())?;
         let size_bytes = metadata.len();
         let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
-        
-        let (width, height) = get_image_dimensions_libheif(path).unwrap_or((0, 0));
+        let (width, height) = get_image_dimensions(path).unwrap_or((0, 0));
         let thumbnail = generate_thumbnail_base64(path, 120).ok();
-        
         Ok(HeicFileInfo {
             path: path.to_string_lossy().to_string(),
             name, width, height, size_bytes, thumbnail,
         })
     }
 
+    // macOS: Use sips for thumbnail
+    #[cfg(target_os = "macos")]
+    fn generate_thumbnail_base64(path: &Path, max_size: u32) -> anyhow::Result<String> {
+        let temp_dir = TempDir::new()?;
+        let thumb_path = temp_dir.path().join("thumb.jpg");
+        let status = Command::new("sips")
+            .args(["-Z", &max_size.to_string(), "-s", "format", "jpeg",
+                   &path.to_string_lossy(), "--out", &thumb_path.to_string_lossy()])
+            .status()?;
+        if !status.success() {
+            anyhow::bail!("sips failed");
+        }
+        let thumb_data = std::fs::read(&thumb_path)?;
+        Ok(format!("data:image/jpeg;base64, {}", base64_encode(&thumb_data)))
+    }
+
+    // Windows/Linux: Use libheif
+    #[cfg(not(target_os = "macos"))]
     fn generate_thumbnail_base64(path: &Path, max_size: u32) -> anyhow::Result<String> {
         let ctx = HeifContext::read_from_file(path.to_string_lossy().as_ref())?;
         let handle = ctx.primary_image_handle()?;
-        
         let img = handle.decode(ColorSpace::Rgb(RgbChroma::Rgb8), None)
             .map_err(|e| anyhow::anyhow!("Failed to decode: {}", e))?;
-        
         let planes = img.planes();
         let plane = planes.interleaved
             .ok_or_else(|| anyhow::anyhow!("No interleaved plane"))?;
-        
         let width = img.width();
         let height = img.height();
-        
-        // Create RGB image
         let rgb_image = image::RgbImage::from_raw(width, height, plane.data.to_vec())
             .ok_or_else(|| anyhow::anyhow!("Failed to create image"))?;
-        
-        // Resize if needed
         let thumbnail = if width > max_size || height > max_size {
             image::DynamicImage::ImageRgb8(rgb_image)
                 .resize(max_size, max_size, image::imageops::FilterType::Lanczos3)
         } else {
             image::DynamicImage::ImageRgb8(rgb_image)
         };
-        
-        // Encode to PNG for thumbnail
         let mut buffer = Vec::new();
         thumbnail.write_to(&mut Cursor::new(&mut buffer), image::ImageFormat::Png)?;
-        
         Ok(format!("data:image/png;base64, {}", base64_encode(&buffer)))
     }
 
-    fn convert_heic_to_jpeg_libheif(heic_path: &Path, quality: u8) -> anyhow::Result<Vec<u8>> {
+    // macOS: Use sips for conversion
+    #[cfg(target_os = "macos")]
+    fn convert_heic_to_jpeg(heic_path: &Path, quality: u8) -> anyhow::Result<Vec<u8>> {
+        let temp_dir = TempDir::new()?;
+        let output_path = temp_dir.path().join("output.jpg");
+        let status = Command::new("sips")
+            .args(["-s", "format", "jpeg", "-s", "formatOptions", &quality.to_string(),
+                   &heic_path.to_string_lossy(), "--out", &output_path.to_string_lossy()])
+            .status()?;
+        if !status.success() {
+            anyhow::bail!("sips conversion failed");
+        }
+        let jpeg_data = std::fs::read(&output_path)?;
+        Ok(jpeg_data)
+    }
+
+    // Windows/Linux: Use libheif
+    #[cfg(not(target_os = "macos"))]
+    fn convert_heic_to_jpeg(heic_path: &Path, quality: u8) -> anyhow::Result<Vec<u8>> {
         let ctx = HeifContext::read_from_file(heic_path.to_string_lossy().as_ref())?;
         let handle = ctx.primary_image_handle()?;
-        
         let img = handle.decode(ColorSpace::Rgb(RgbChroma::Rgb8), None)
             .map_err(|e| anyhow::anyhow!("Failed to decode HEIC: {}", e))?;
-        
         let planes = img.planes();
         let plane = planes.interleaved
             .ok_or_else(|| anyhow::anyhow!("No interleaved plane"))?;
-        
         let width = img.width();
         let height = img.height();
-        
-        // Create RGB image
         let rgb_image = image::RgbImage::from_raw(width, height, plane.data.to_vec())
             .ok_or_else(|| anyhow::anyhow!("Failed to create image"))?;
-        
-        // Encode to JPEG with quality
         let mut buffer = Vec::new();
         let mut cursor = Cursor::new(&mut buffer);
         let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cursor, quality);
         encoder.encode_image(&rgb_image)
             .map_err(|e| anyhow::anyhow!("Failed to encode JPEG: {}", e))?;
-        
         Ok(buffer)
     }
 
-    /// Estimate output size based on quality and original file
     fn estimate_jpeg_size(original_size: u64, quality: u8, width: u32, height: u32) -> u64 {
         if width == 0 || height == 0 {
             let ratio = match quality {
@@ -214,18 +264,15 @@ mod commands {
     #[tauri::command]
     pub fn calculate_size_estimate(files: Vec<HeicFileInfo>, quality: u8) -> Result<SizeEstimate, String> {
         let quality = quality.clamp(1, 100);
-        
         let original_total: u64 = files.iter().map(|f| f.size_bytes).sum();
         let estimated_total: u64 = files.iter()
             .map(|f| estimate_jpeg_size(f.size_bytes, quality, f.width, f.height))
             .sum();
-        
         let savings_percent = if original_total > 0 {
             ((original_total as f64 - estimated_total as f64) / original_total as f64 * 100.0) as f32
         } else {
             0.0
         };
-
         Ok(SizeEstimate {
             original_total,
             estimated_total,
@@ -250,7 +297,7 @@ mod commands {
             let path = PathBuf::from(file_path);
             let file_stem = path.file_stem().unwrap_or_default().to_string_lossy();
             let jpg_name = format!("{}.jpg", file_stem);
-            match convert_heic_to_jpeg_libheif(&path, quality) {
+            match convert_heic_to_jpeg(&path, quality) {
                 Ok(jpeg_data) => {
                     zip.start_file(&jpg_name, options).map_err(|e| e.to_string())?;
                     zip.write_all(&jpeg_data).map_err(|e| e.to_string())?;

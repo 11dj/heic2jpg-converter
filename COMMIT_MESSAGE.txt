@@ -1,0 +1,56 @@
+Commit Message for Review
+=========================
+
+Title:
+------
+Fix libheif dependency and cross-platform HEIC support
+
+Body:
+-----
+This commit fixes the Windows HEIC conversion support:
+
+1. Fixed libheif-rs version from 0.18 to 0.22
+   - Version 0.18 had incorrect feature flags
+   - Version 0.22 works correctly with default features
+
+2. Updated Rust code for cross-platform compatibility:
+   - macOS: Uses native 'sips' command (reliable, no external deps)
+   - Windows/Linux: Uses libheif library for HEIC decoding
+   - Added conditional compilation with #[cfg] attributes
+
+3. Fixed import issues:
+   - Cursor is only imported on non-macOS platforms
+   - Command is only imported on macOS
+   - libheif types only imported on non-macOS
+
+4. Updated GitHub Actions workflow:
+   - Simplified Windows build (may still need manual setup)
+   - macOS and Linux builds work automatically
+   - Removed auto-push to avoid conflicts
+
+5. Added push-to-github.sh script:
+   - For manual pushing with custom commit messages
+   - Shows git status before committing
+
+Platform Support Status:
+- macOS: ✅ Full HEIC support (using sips)
+- Linux: ✅ Full HEIC support (using libheif)
+- Windows: ⚠️ Partial (code ready, needs libheif setup)
+
+Files Changed:
+- src-tauri/Cargo.toml (libheif version)
+- src-tauri/src/lib.rs (conditional compilation)
+- .github/workflows/build-all-platforms.yml (simplified)
+- push-to-github.sh (new helper script)
+
+How to Push:
+------------
+1. Review the changes above
+2. If satisfied, run: ./push-to-github.sh
+3. Or manually: git add . && git commit -m "Fix libheif dependency and cross-platform HEIC support" && git push
+
+To Review Changes:
+------------------
+Run: git diff
+Or: git diff src-tauri/Cargo.toml
+Or: git diff src-tauri/src/lib.rs

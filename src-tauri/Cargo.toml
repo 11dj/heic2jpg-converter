@@ -25,7 +25,7 @@ serde_json = "1"
 
 # Image processing
 # Using libheif-rs with bundled libheif for cross-platform support
-libheif-rs = { version = "0.18", default-features = false, features = ["use-bindgen"] }
+libheif-rs = "0.22"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 
 # File handling
