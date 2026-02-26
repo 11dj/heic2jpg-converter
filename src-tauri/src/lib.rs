@@ -131,7 +131,7 @@ mod commands {
 
     #[cfg(not(target_os = "macos"))]
     fn convert_heic_to_jpeg(_heic_path: &Path, _quality: u8) -> anyhow::Result<Vec<u8>> {
-        anyhow::bail!("HEIC conversion requires platform-specific tools")
+        anyhow::bail!("HEIC conversion on Windows requires the HEIF Image Extensions from Microsoft Store. Install it and try again.")
     }
 
     fn get_heic_info_internal(path: &Path) -> Result<HeicFileInfo, String> {
