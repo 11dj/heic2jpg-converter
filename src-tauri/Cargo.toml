@@ -23,9 +23,9 @@ tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# Image processing - using pure Rust alternatives
-# For HEIC, we'll use a fallback approach with external tool or mock for now
-# libheif-rs requires system libheif which may not be available
+# Image processing
+# Using libheif-rs with bundled libheif for cross-platform support
+libheif-rs = { version = "0.18", default-features = false, features = ["use-bindgen"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 
 # File handling
@@ -43,3 +43,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 # Logging
 log = "0.4"
+
+# Platform-specific dependencies
+[target.'cfg(windows)'.dependencies]
+# Additional Windows-specific deps if needed

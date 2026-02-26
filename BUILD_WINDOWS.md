@@ -1,8 +1,14 @@
-# Building Windows App from macOS
+# Building Windows App
 
-## Option 1: GitHub Actions (Recommended - FREE)
+## ✅ Windows Now Fully Supported!
 
-I've created a GitHub Actions workflow at `.github/workflows/build-windows.yml`.
+The Windows build now includes **full HEIC conversion support** using the `libheif` library!
+
+---
+
+## GitHub Actions (Recommended - FREE)
+
+The GitHub Actions workflow at `.github/workflows/build-all-platforms.yml` automatically builds for all platforms including Windows with HEIC support.
 
 ### Steps:
 
@@ -16,135 +22,65 @@ I've created a GitHub Actions workflow at `.github/workflows/build-windows.yml`.
    git push -u origin main
    ```
 
-2. **Go to GitHub repository → Actions → "Build Windows App" → Run workflow**
+2. **Go to GitHub repository → Actions → "Build All Platforms" → Run workflow**
 
-3. **Download the built Windows installer from the artifacts**
-
----
-
-## Option 2: Build on Windows Machine
-
-If you have access to a Windows PC:
-
-1. **Install prerequisites on Windows:**
-   - Node.js 20+: https://nodejs.org/
-   - Rust: https://rustup.rs/
-   - Visual Studio Build Tools: https://aka.ms/buildtools
-     - Select "Desktop development with C++"
-
-2. **Clone and build:**
-   ```powershell
-   git clone https://github.com/11dj/heic2jpg-converter.git
-   cd heic2jpg-converter
-   npm install
-   npm run tauri build
-   ```
-
-3. **Find installer at:**
-   ```
-   src-tauri\target\release\bundle\msi\HEIC2JPG Converter_1.0.0_x64_en-US.msi
-   ```
+3. **Download the built Windows installer from:**
+   - The `builds/windows/` folder in your repository
+   - Or the Actions artifacts
 
 ---
 
-## Option 3: Use Docker (Advanced)
+## Build on Windows Machine
 
-Create a `Dockerfile.windows`:
+If you have a Windows PC:
 
-```dockerfile
-FROM mcr.microsoft.com/windows/servercore:ltsc2022
+### 1. Install Prerequisites on Windows:
 
-# Install chocolatey
-RUN powershell -Command "
-    Set-ExecutionPolicy Bypass -Scope Process -Force;
-    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072;
-    iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-"
+- **Node.js 20+**: https://nodejs.org/
+- **Rust**: https://rustup.rs/
+- **Visual Studio Build Tools**: https://aka.ms/buildtools
+  - Select "Desktop development with C++"
+- **vcpkg** (for libheif):
+  ```powershell
+  git clone https://github.com/Microsoft/vcpkg.git
+  cd vcpkg
+  .\bootstrap-vcpkg.bat
+  .\vcpkg install libheif:x64-windows-static
+  ```
 
-# Install dependencies
-RUN choco install -y nodejs rust visualstudio2022buildtools
+### 2. Build:
 
-WORKDIR /app
-COPY . .
-
-RUN npm install
-RUN cargo install tauri-cli
-RUN npm run tauri build
+```powershell
+git clone https://github.com/11dj/heic2jpg-converter.git
+cd heic2jpg-converter
+npm install
+$env:VCPKG_ROOT = "C:\path\to\vcpkg"
+$env:PKG_CONFIG_PATH = "$env:VCPKG_ROOT\installed\x64-windows-static\lib\pkgconfig"
+npm run tauri build
 ```
 
-Build:
-```bash
-docker build -f Dockerfile.windows -t heic2jpg-builder .
-docker create --name extract heic2jpg-builder
-docker cp extract:/app/src-tauri/target/release/bundle ./windows-build
-docker rm extract
+### 3. Find installer at:
 ```
-
----
-
-## Option 4: Use Cross-Compilation Tool (Experimental)
-
-Install `cargo-xwin` for cross-compiling from macOS to Windows:
-
-```bash
-# Install cargo-xwin
-cargo install cargo-xwin
-
-# Install llvm for llvm-rc
-brew install llvm
-
-# Set environment variables
-export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
-
-# Build (experimental, may not work)
-npm run tauri build -- --target x86_64-pc-windows-msvc
+src-tauri\target\release\bundle\msi\HEIC2JPG Converter_1.0.0_x64_en-US.msi
 ```
-
-**Note:** This method often fails due to Windows resource compiler requirements.
-
----
-
-## Recommended: GitHub Actions
-
-The GitHub Actions method is the most reliable and FREE way to build Windows apps from macOS.
-
-### Setting up GitHub Actions:
-
-1. Create a GitHub repository at https://github.com/new
-2. Name it `heic2jpg-converter`
-3. Push your code there
-4. Go to the "Actions" tab
-5. Click "Build Windows App"
-6. Click "Run workflow"
-7. Wait ~10 minutes
-8. Download the MSI from the artifacts section
 
 ---
 
 ## Windows-Specific Notes
 
-### ⚠️ HEIC Support on Windows (LIMITATION)
+### HEIC Support is Built-In! 🎉
 
-**Current Status:** The Windows build can be created, but HEIC conversion functionality requires additional implementation.
+The Windows app now includes:
+- ✅ Full HEIC to JPEG conversion
+- ✅ No additional codecs needed
+- ✅ Works on Windows 10 and 11
 
-The app currently relies on macOS's `sips` command for HEIC conversion. Windows support would require:
+### How It Works
 
-1. **Installing libheif** or similar HEIC library
-2. **Using Windows Imaging Component (WIC)** with HEIC codecs
-3. **Bundling a conversion tool** with the app
-
-**What works on Windows:**
-- ✅ UI and drag-drop functionality
-- ✅ File scanning and ZIP extraction
-- ✅ Size estimation
-- ❌ HEIC to JPEG conversion (shows error message)
-
-**For Windows users needing HEIC conversion now:**
-- Use **CopyTrans HEIC for Windows**: https://www.copytrans.net/copytransheic/
-- Use **iMazing HEIC Converter**: Free tool
-- Use online converters
-
-**Note:** Installing "HEIF Image Extensions" from Microsoft Store only enables viewing HEIC files, not converting them for this app.
+The app uses the `libheif` library (the same library used by major image software) which is:
+- Statically linked on Windows
+- No external dependencies required
+- Fully self-contained
 
 ### Windows Output Files
 
@@ -160,11 +96,33 @@ After successful build:
 
 ## Quick Summary
 
-| Method | Difficulty | Cost | Time |
-|--------|------------|------|------|
-| GitHub Actions | Easy | Free | ~10 min |
-| Windows PC | Easy | Free | ~5 min |
-| Docker | Hard | Free | ~30 min |
-| Cross-compile | Very Hard | Free | Often fails |
+| Method | Difficulty | Cost | Time | HEIC Support |
+|--------|------------|------|------|--------------|
+| GitHub Actions | Easy | Free | ~15 min | ✅ Yes |
+| Windows PC | Medium | Free | ~10 min | ✅ Yes |
 
 **Recommendation:** Use GitHub Actions for automated builds!
+
+---
+
+## Troubleshooting
+
+### Error: "libheif not found"
+
+Make sure vcpkg is properly installed and the environment variables are set:
+```powershell
+$env:VCPKG_ROOT = "C:\path\to\vcpkg"
+$env:PKG_CONFIG_PATH = "$env:VCPKG_ROOT\installed\x64-windows-static\lib\pkgconfig"
+```
+
+### Error: "Could not find `protoc`"
+
+Download Protocol Buffers compiler: https://github.com/protocolbuffers/protobuf/releases
+Add to PATH.
+
+### Build succeeds but app doesn't convert HEIC
+
+This should not happen with the current version. If it does:
+1. Check the app logs
+2. Ensure libheif was properly linked
+3. Try rebuilding with verbose output: `npm run tauri build -- --verbose`
