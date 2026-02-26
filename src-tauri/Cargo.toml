@@ -1,6 +1,6 @@
 [package]
 name = "heic2jpg-converter"
-version = "1.0.0"
+version = "1.1.0"
 description = "HEIC to JPG Converter - A cross-platform desktop app"
 authors = ["11dj <https://github.com/11dj>"]
 edition = "2021"

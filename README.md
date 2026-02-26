@@ -1,11 +1,11 @@
-# HEIC2JPG Converter v1.0.0
+# HEIC2JPG Converter v1.1.0
 
 ![Logo](src-tauri/icons/icon.png)
 
 A modern, cross-platform desktop application for converting HEIC/HEIF images to JPEG format. Built with **Tauri** (Rust + React) for blazing-fast performance and small bundle size.
 
 **Author:** [11dj](https://github.com/11dj)  
-**Version:** 1.0.0  
+**Version:** 1.1.0  
 **License:** MIT
 
 ## ✨ Features

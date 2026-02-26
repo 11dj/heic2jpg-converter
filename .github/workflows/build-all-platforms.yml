@@ -175,7 +175,7 @@ jobs:
         | Linux | `*.AppImage` | Portable AppImage |
         
         ## Version
-        - Version: 1.0.0
+        - Version: 1.1.0
         - Author: 11dj (https://github.com/11dj)
         - License: MIT
         
