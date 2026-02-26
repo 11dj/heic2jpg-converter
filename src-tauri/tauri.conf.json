@@ -1,0 +1,44 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "HEIC2JPG Converter",
+  "version": "1.0.0",
+  "identifier": "com.11dj.heic2jpg-converter",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "HEIC2JPG Converter v1.0.0",
+        "width": 900,
+        "height": 700,
+        "minWidth": 700,
+        "minHeight": 500,
+        "center": true,
+        "dragDropEnabled": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "publisher": "11dj",
+    "copyright": "Copyright (c) 2025 11dj",
+    "category": "DeveloperTool",
+    "shortDescription": "Convert HEIC images to JPEG format",
+    "longDescription": "A modern desktop application for converting HEIC/HEIF images to JPEG format with drag & drop support, quality control, and batch processing.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}
