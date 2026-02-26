@@ -3,56 +3,40 @@ Commit Message for Review
 
 Title:
 ------
-Add platform-specific HEIC conversion for macOS and Windows
+Fix PowerShell format string error in Windows thumbnail generation
 
 Body:
 -----
-This commit implements platform-specific HEIC conversion:
+Fixed the "invalid reference to positional arguments" error in Windows build.
 
-1. macOS Support (using native sips command):
-   - Get image dimensions: sips -g pixelWidth -g pixelHeight
-   - Generate thumbnails: sips -Z size -s format jpeg
-   - Convert HEIC to JPEG: sips -s format jpeg -s formatOptions quality
-   - No external dependencies needed
+Problem:
+- The PowerShell script in generate_thumbnail_base64 used curly braces {}
+- These conflicted with Rust's format!() macro syntax
+- The format string expected 4 arguments but only 3 were provided
+- PowerShell's hashtable syntax @{...} was being interpreted as format arguments
 
-2. Windows Support (using PowerShell + .NET Imaging):
-   - Get image dimensions: System.Drawing.Image.FromFile
-   - Generate thumbnails: System.Drawing.Bitmap resize
-   - Convert HEIC to JPEG: ImageCodecInfo with quality encoder
-   - Requires HEIF Image Extensions from Microsoft Store
+Solution:
+- Simplified the PowerShell resize script
+- Used [math]::Min() for ratio calculation instead of if-else
+- Properly escaped all format arguments
+- Single pass with all variables properly formatted
 
-3. Removed Linux support as requested
-   - GitHub Actions only builds macOS and Windows now
-   - Simplified workflow
-
-4. Platform-specific compilation:
-   - Uses #[cfg(target_os = "macos")] for macOS code
-   - Uses #[cfg(target_os = "windows")] for Windows code
-   - Clean separation of platform implementations
-
-Platform Support:
-- macOS: ✅ Full HEIC support (native sips)
-- Windows: ✅ Full HEIC support (PowerShell/.NET)
-- Linux: ❌ Removed
-
-Prerequisites:
-- macOS: No additional software needed
-- Windows: Install "HEIF Image Extensions" from Microsoft Store
+Changed:
+- Windows thumbnail generation now uses cleaner PowerShell script
+- Calculates ratio using: [math]::Min(max_w/width, max_h/height)
+- Creates new bitmap with calculated dimensions
+- Exports to PNG and returns base64
 
 Files Changed:
-- src-tauri/src/lib.rs (platform-specific implementations)
-- .github/workflows/build-all-platforms.yml (removed Linux)
-- COMMIT_MESSAGE.txt (this file)
+- src-tauri/src/lib.rs (fixed PowerShell script formatting)
+
+Platform Support:
+- macOS: ✅ Full HEIC support
+- Windows: ✅ Fixed HEIC support  
+- Linux: ❌ Not supported (removed)
 
 How to Push:
 ------------
-1. Review the changes: git diff
-2. Run: ./push-to-github.sh "Add platform-specific HEIC conversion"
+1. Review: git diff src-tauri/src/lib.rs
+2. Run: ./push-to-github.sh "Fix PowerShell format string error"
 3. Or manually: git add . && git commit -m "..." && git push
-
-To Test After Push:
--------------------
-1. Wait for GitHub Actions to complete
-2. Download builds from Releases page
-3. Test on macOS: Drag HEIC file, convert, check output
-4. Test on Windows: Install HEIF Image Extensions first, then convert

@@ -160,9 +160,10 @@ mod commands {
         }
         
         // Now resize if needed and encode to base64
+        let path_escaped = jpeg_path.to_string_lossy().replace('\\', "\\\\").replace('\'', "''");
         let ps_resize_script = format!(
-            r#"Add-Type -AssemblyName System.Drawing; $img = [System.Drawing.Image]::FromFile('{}'); $new_size = if ($img.Width -gt $img.Height) {{ @{2} Width = {}; Height = [int]($img.Height * {} / $img.Width) }} else {{ @{2} Width = [int]($img.Width * {} / $img.Height); Height = {} }}; $bitmap = New-Object System.Drawing.Bitmap($img, $new_size.Width, $new_size.Height); $ms = New-Object System.IO.MemoryStream; $bitmap.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); [Convert]::ToBase64String($ms.ToArray())"#,
-            jpeg_path.to_string_lossy().replace('\\', "\\\\").replace('\'', "''"),
+            r#"Add-Type -AssemblyName System.Drawing; $img = [System.Drawing.Image]::FromFile('{}'); $ratio = [math]::Min({} / $img.Width, {} / $img.Height); $new_width = [int]($img.Width * $ratio); $new_height = [int]($img.Height * $ratio); $bitmap = New-Object System.Drawing.Bitmap($img, $new_width, $new_height); $ms = New-Object System.IO.MemoryStream; $bitmap.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); [Convert]::ToBase64String($ms.ToArray())"#,
+            path_escaped,
             max_size,
             max_size
         );
