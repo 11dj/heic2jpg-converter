@@ -1,4 +1,4 @@
-name: Build All Platforms
+name: Build macOS and Windows
 
 on:
   push:
@@ -42,7 +42,7 @@ jobs:
         path: |
           src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
 
-  # Build Windows - only if libheif can be installed
+  # Build Windows
   build-windows:
     runs-on: windows-latest
     steps:
@@ -59,73 +59,23 @@ jobs:
       with:
         toolchain: stable
         
-    - name: Install vcpkg and libheif
-      run: |
-        git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
-        C:\vcpkg\bootstrap-vcpkg.bat
-        C:\vcpkg\vcpkg install libheif:x64-windows-static
-        echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
-      shell: pwsh
-      continue-on-error: true
-        
     - name: Install dependencies
       run: npm install
       
     - name: Build Windows app
       run: npm run tauri build
-      env:
-        PKG_CONFIG_PATH: "C:\\vcpkg\\installed\\x64-windows-static\\lib\\pkgconfig"
-      continue-on-error: true
         
     - name: Upload Windows artifacts
       uses: actions/upload-artifact@v4
-      if: success()
       with:
         name: windows-build
         path: |
           src-tauri/target/release/bundle/msi/*.msi
           src-tauri/target/release/bundle/nsis/*.exe
 
-  # Build Linux
-  build-linux:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-        
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-        sudo apt-get install -y libheif-dev libde265-dev
-        
-    - name: Install Rust
-      uses: actions-rust-lang/setup-rust-toolchain@v1
-      with:
-        toolchain: stable
-        
-    - name: Install dependencies
-      run: npm install
-      
-    - name: Build Linux app
-      run: npm run tauri build
-        
-    - name: Upload Linux artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: linux-build
-        path: |
-          src-tauri/target/release/bundle/deb/*.deb
-          src-tauri/target/release/bundle/appimage/*.AppImage
-
   # Create Release (only on tags)
   create-release:
-    needs: [build-macos, build-linux]
+    needs: [build-macos, build-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
@@ -139,7 +89,7 @@ jobs:
       with:
         files: |
           artifacts/macos-build/**/*
-          artifacts/linux-build/**/*
+          artifacts/windows-build/**/*
         draft: false
         prerelease: false
       env:

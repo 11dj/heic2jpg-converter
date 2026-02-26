@@ -4,19 +4,10 @@ mod commands {
     use std::fs::File;
     use std::io::{BufReader, BufWriter, Read, Write};
     use std::path::{Path, PathBuf};
+    use std::process::Command;
     use tempfile::TempDir;
     use zip::write::FileOptions;
     use chrono::Local;
-    
-    // Only use libheif on non-macOS platforms
-    #[cfg(not(target_os = "macos"))]
-    use libheif_rs::{ColorSpace, HeifContext, RgbChroma};
-    #[cfg(not(target_os = "macos"))]
-    use std::io::Cursor;
-    
-    // Only use Command on macOS
-    #[cfg(target_os = "macos")]
-    use std::process::Command;
 
     #[derive(Debug, Serialize, Deserialize, Clone)]
     pub struct HeicFileInfo {
@@ -74,7 +65,7 @@ mod commands {
         Ok(extracted)
     }
 
-    // macOS: Use sips
+    // macOS: Use sips to get image dimensions
     #[cfg(target_os = "macos")]
     fn get_image_dimensions(path: &Path) -> anyhow::Result<(u32, u32)> {
         let output = Command::new("sips")
@@ -98,12 +89,25 @@ mod commands {
         Ok((width, height))
     }
 
-    // Windows/Linux: Use libheif
-    #[cfg(not(target_os = "macos"))]
+    // Windows: Use PowerShell with Windows Imaging Component
+    #[cfg(target_os = "windows")]
     fn get_image_dimensions(path: &Path) -> anyhow::Result<(u32, u32)> {
-        let ctx = HeifContext::read_from_file(path.to_string_lossy().as_ref())?;
-        let handle = ctx.primary_image_handle()?;
-        Ok((handle.width(), handle.height()))
+        let ps_script = format!(
+            r#"Add-Type -AssemblyName System.Drawing; $img = [System.Drawing.Image]::FromFile('{}'); Write-Output "$($img.Width) $($img.Height)"; $img.Dispose()"#,
+            path.to_string_lossy().replace('\\', "\\\\").replace('\'', "''")
+        );
+        let output = Command::new("powershell")
+            .args(["-Command", &ps_script])
+            .output()?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let parts: Vec<&str> = stdout.trim().split_whitespace().collect();
+        if parts.len() == 2 {
+            let width = parts[0].parse().unwrap_or(0);
+            let height = parts[1].parse().unwrap_or(0);
+            Ok((width, height))
+        } else {
+            Ok((0, 0))
+        }
     }
 
     fn get_heic_info_internal(path: &Path) -> Result<HeicFileInfo, String> {
@@ -134,29 +138,47 @@ mod commands {
         Ok(format!("data:image/jpeg;base64, {}", base64_encode(&thumb_data)))
     }
 
-    // Windows/Linux: Use libheif
-    #[cfg(not(target_os = "macos"))]
+    // Windows: Convert to JPEG first then resize
+    #[cfg(target_os = "windows")]
     fn generate_thumbnail_base64(path: &Path, max_size: u32) -> anyhow::Result<String> {
-        let ctx = HeifContext::read_from_file(path.to_string_lossy().as_ref())?;
-        let handle = ctx.primary_image_handle()?;
-        let img = handle.decode(ColorSpace::Rgb(RgbChroma::Rgb8), None)
-            .map_err(|e| anyhow::anyhow!("Failed to decode: {}", e))?;
-        let planes = img.planes();
-        let plane = planes.interleaved
-            .ok_or_else(|| anyhow::anyhow!("No interleaved plane"))?;
-        let width = img.width();
-        let height = img.height();
-        let rgb_image = image::RgbImage::from_raw(width, height, plane.data.to_vec())
-            .ok_or_else(|| anyhow::anyhow!("Failed to create image"))?;
-        let thumbnail = if width > max_size || height > max_size {
-            image::DynamicImage::ImageRgb8(rgb_image)
-                .resize(max_size, max_size, image::imageops::FilterType::Lanczos3)
-        } else {
-            image::DynamicImage::ImageRgb8(rgb_image)
-        };
-        let mut buffer = Vec::new();
-        thumbnail.write_to(&mut Cursor::new(&mut buffer), image::ImageFormat::Png)?;
-        Ok(format!("data:image/png;base64, {}", base64_encode(&buffer)))
+        // First convert HEIC to JPEG using PowerShell
+        let temp_dir = TempDir::new()?;
+        let jpeg_path = temp_dir.path().join("temp.jpg");
+        
+        let ps_script = format!(
+            r#"Add-Type -AssemblyName System.Drawing; $img = [System.Drawing.Image]::FromFile('{}'); $img.Save('{}', [System.Drawing.Imaging.ImageFormat]::Jpeg); $img.Dispose()"#,
+            path.to_string_lossy().replace('\\', "\\\\").replace('\'', "''"),
+            jpeg_path.to_string_lossy().replace('\\', "\\\\").replace('\'', "''")
+        );
+        
+        let status = Command::new("powershell")
+            .args(["-Command", &ps_script])
+            .status()?;
+        
+        if !status.success() {
+            anyhow::bail!("PowerShell image conversion failed");
+        }
+        
+        // Now resize if needed and encode to base64
+        let ps_resize_script = format!(
+            r#"Add-Type -AssemblyName System.Drawing; $img = [System.Drawing.Image]::FromFile('{}'); $new_size = if ($img.Width -gt $img.Height) {{ @{2} Width = {}; Height = [int]($img.Height * {} / $img.Width) }} else {{ @{2} Width = [int]($img.Width * {} / $img.Height); Height = {} }}; $bitmap = New-Object System.Drawing.Bitmap($img, $new_size.Width, $new_size.Height); $ms = New-Object System.IO.MemoryStream; $bitmap.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); [Convert]::ToBase64String($ms.ToArray())"#,
+            jpeg_path.to_string_lossy().replace('\\', "\\\\").replace('\'', "''"),
+            max_size,
+            max_size
+        );
+        
+        let output = Command::new("powershell")
+            .args(["-Command", &ps_resize_script])
+            .output()?;
+        
+        if !output.status.success() {
+            // Fallback: just encode the jpeg
+            let jpeg_data = std::fs::read(&jpeg_path)?;
+            return Ok(format!("data:image/jpeg;base64, {}", base64_encode(&jpeg_data)));
+        }
+        
+        let base64 = String::from_utf8_lossy(&output.stdout);
+        Ok(format!("data:image/png;base64, {}", base64.trim()))
     }
 
     // macOS: Use sips for conversion
@@ -175,26 +197,30 @@ mod commands {
         Ok(jpeg_data)
     }
 
-    // Windows/Linux: Use libheif
-    #[cfg(not(target_os = "macos"))]
+    // Windows: Use PowerShell with .NET Imaging
+    #[cfg(target_os = "windows")]
     fn convert_heic_to_jpeg(heic_path: &Path, quality: u8) -> anyhow::Result<Vec<u8>> {
-        let ctx = HeifContext::read_from_file(heic_path.to_string_lossy().as_ref())?;
-        let handle = ctx.primary_image_handle()?;
-        let img = handle.decode(ColorSpace::Rgb(RgbChroma::Rgb8), None)
-            .map_err(|e| anyhow::anyhow!("Failed to decode HEIC: {}", e))?;
-        let planes = img.planes();
-        let plane = planes.interleaved
-            .ok_or_else(|| anyhow::anyhow!("No interleaved plane"))?;
-        let width = img.width();
-        let height = img.height();
-        let rgb_image = image::RgbImage::from_raw(width, height, plane.data.to_vec())
-            .ok_or_else(|| anyhow::anyhow!("Failed to create image"))?;
-        let mut buffer = Vec::new();
-        let mut cursor = Cursor::new(&mut buffer);
-        let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cursor, quality);
-        encoder.encode_image(&rgb_image)
-            .map_err(|e| anyhow::anyhow!("Failed to encode JPEG: {}", e))?;
-        Ok(buffer)
+        let temp_dir = TempDir::new()?;
+        let output_path = temp_dir.path().join("output.jpg");
+        
+        // Use PowerShell with System.Drawing for conversion
+        let ps_script = format!(
+            r#"Add-Type -AssemblyName System.Drawing; $img = [System.Drawing.Image]::FromFile('{}'); $encoder = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object {{ $_.FormatDescription -eq 'JPEG' }}; $encoderParams = New-Object System.Drawing.Imaging.EncoderParameters(1); $encoderParams.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter([System.Drawing.Imaging.Encoder]::Quality, [long]{}); $img.Save('{}', $encoder, $encoderParams); $img.Dispose()"#,
+            heic_path.to_string_lossy().replace('\\', "\\\\").replace('\'', "''"),
+            quality,
+            output_path.to_string_lossy().replace('\\', "\\\\").replace('\'', "''")
+        );
+        
+        let status = Command::new("powershell")
+            .args(["-Command", &ps_script])
+            .status()?;
+        
+        if !status.success() {
+            anyhow::bail!("Windows PowerShell conversion failed. Make sure you have HEIF Image Extensions installed from Microsoft Store.");
+        }
+        
+        let jpeg_data = std::fs::read(&output_path)?;
+        Ok(jpeg_data)
     }
 
     fn estimate_jpeg_size(original_size: u64, quality: u8, width: u32, height: u32) -> u64 {
