@@ -123,20 +123,28 @@ The GitHub Actions method is the most reliable and FREE way to build Windows app
 
 ## Windows-Specific Notes
 
-### HEIC Support on Windows
+### ⚠️ HEIC Support on Windows (LIMITATION)
 
-The Windows build requires HEIC codec support:
+**Current Status:** The Windows build can be created, but HEIC conversion functionality requires additional implementation.
 
-1. **Install HEIF Image Extensions from Microsoft Store:**
-   - Open Microsoft Store
-   - Search for "HEIF Image Extensions"
-   - Install (it's free)
+The app currently relies on macOS's `sips` command for HEIC conversion. Windows support would require:
 
-2. **Alternative: CopyTrans HEIC for Windows**
-   - Download: https://www.copytrans.net/copytransheic/
-   - Free for personal use
+1. **Installing libheif** or similar HEIC library
+2. **Using Windows Imaging Component (WIC)** with HEIC codecs
+3. **Bundling a conversion tool** with the app
 
-Without these, the app can scan HEIC files but cannot convert them.
+**What works on Windows:**
+- ✅ UI and drag-drop functionality
+- ✅ File scanning and ZIP extraction
+- ✅ Size estimation
+- ❌ HEIC to JPEG conversion (shows error message)
+
+**For Windows users needing HEIC conversion now:**
+- Use **CopyTrans HEIC for Windows**: https://www.copytrans.net/copytransheic/
+- Use **iMazing HEIC Converter**: Free tool
+- Use online converters
+
+**Note:** Installing "HEIF Image Extensions" from Microsoft Store only enables viewing HEIC files, not converting them for this app.
 
 ### Windows Output Files
 
