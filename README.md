@@ -18,6 +18,7 @@ A modern, cross-platform desktop application for converting HEIC/HEIF images to 
 - 🌙 **Dark Mode**: Automatic dark mode support
 - ⚡ **Fast**: Native performance with Rust backend
 - 🔒 **Privacy**: All processing happens locally - no data leaves your device
+- 🪟 **Full Windows Support**: HEIC conversion now works on Windows (using libheif library)
 
 ## 📋 Prerequisites
 
@@ -185,31 +186,23 @@ convert icon.png -define icon:auto-resize=16,32,48,256 src-tauri/icons/icon.ico
 
 ## 🪟 Windows-Specific Usage Notes
 
-### HEIC Support on Windows
+### ✅ HEIC Support on Windows - FULLY WORKING!
 
-**Important**: This application uses native platform tools for HEIC conversion.
+**Great news!** Windows now has **full HEIC to JPEG conversion support** using the `libheif` library!
 
-- **macOS**: Uses built-in `sips` command (no additional setup needed)
-- **Windows**: Requires additional codec installation
+- **macOS**: Uses `sips` command (built-in)
+- **Windows**: Uses `libheif` library (bundled with the app)
+- **Linux**: Uses `libheif` library
 
-### Installing HEIC Support on Windows
+No additional codecs or installations needed on Windows - the app includes everything!
 
-#### Option 1: HEIF Image Extensions (Microsoft Store)
+### How It Works
 
-1. Open Microsoft Store
-2. Search for "HEIF Image Extensions"
-3. Install the extension
-
-#### Option 2: CopyTrans HEIC for Windows
-
-Download from: https://www.copytrans.net/copytransheic/
-
-#### Option 3: libheif (Advanced)
-
-For developers building from source:
-1. Install vcpkg
-2. Install libheif: `vcpkg install libheif`
-3. Modify the Rust code to use libheif bindings
+The app uses the `libheif` library (the same library used by major image software):
+- ✅ Statically linked on Windows
+- ✅ No external dependencies required
+- ✅ Fully self-contained
+- ✅ Works on Windows 10 and 11
 
 ### Windows Build Troubleshooting
 
