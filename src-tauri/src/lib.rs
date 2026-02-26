@@ -4,6 +4,7 @@ mod commands {
     use std::fs::File;
     use std::io::{BufReader, BufWriter, Read, Write};
     use std::path::{Path, PathBuf};
+    #[cfg(target_os = "macos")]
     use std::process::Command;
     use tempfile::TempDir;
     use zip::write::FileOptions;
@@ -281,6 +282,7 @@ mod commands {
         })
     }
 
+    #[cfg(target_os = "macos")]
     fn base64_encode(input: &[u8]) -> String {
         const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
         let mut result = String::with_capacity((input.len() + 2) / 3 * 4);
